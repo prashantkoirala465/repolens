@@ -54,6 +54,24 @@ _SKIP_FILE_SUFFIXES = {
     ".wasm",
 }
 _MARKDOWN_SUFFIXES = {".md", ".mdx", ".rst"}
+# Extensionless doc files are extremely common (octocat/Hello-World's entire
+# content is a file literally named `README`, no suffix) — without this, a repo
+# whose only content is prose files indexes zero chunks.
+_EXTENSIONLESS_DOC_NAMES = {
+    "readme",
+    "license",
+    "licence",
+    "contributing",
+    "changelog",
+    "authors",
+    "notice",
+    "code_of_conduct",
+    "security",
+}
+
+
+def _is_extensionless_doc(path: Path) -> bool:
+    return path.suffix == "" and path.stem.lower() in _EXTENSIONLESS_DOC_NAMES
 
 
 def iter_indexable_files(repo_root: Path) -> list[Path]:
@@ -73,7 +91,9 @@ def iter_indexable_files(repo_root: Path) -> list[Path]:
                 continue
         except OSError:
             continue
-        if language_for_path(str(path)) is None and path.suffix.lower() not in _MARKDOWN_SUFFIXES:
+        is_code = language_for_path(str(path)) is not None
+        is_markdown = path.suffix.lower() in _MARKDOWN_SUFFIXES or _is_extensionless_doc(path)
+        if not is_code and not is_markdown:
             continue
         files.append(path)
         if len(files) >= settings.max_files_indexed:
@@ -89,6 +109,6 @@ def chunk_file(repo_root: Path, path: Path) -> list[Chunk]:
     except OSError:
         return []
 
-    if path.suffix.lower() in _MARKDOWN_SUFFIXES:
+    if path.suffix.lower() in _MARKDOWN_SUFFIXES or _is_extensionless_doc(path):
         return chunk_markdown_file(relative_path, text)
     return chunk_code_file(relative_path, text)
