@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -16,10 +17,24 @@ class Settings(BaseSettings):
     qdrant_url: str = Field(default="http://localhost:6333", alias="QDRANT_URL")
     qdrant_collection: str = Field(default="repolens_chunks", alias="QDRANT_COLLECTION")
 
-    voyage_api_key: str = Field(alias="VOYAGE_API_KEY")
+    # Ollama is the default for both providers: it's free and self-hosted, so the
+    # app boots and runs with no API keys at all — see docs/adr/0006. Voyage/
+    # Anthropic are opt-in for better retrieval/answer quality, not required.
+    embedding_provider: Literal["voyage", "ollama"] = Field(
+        default="ollama", alias="EMBEDDING_PROVIDER"
+    )
+    generation_provider: Literal["anthropic", "ollama"] = Field(
+        default="ollama", alias="GENERATION_PROVIDER"
+    )
+
+    ollama_base_url: str = Field(default="http://localhost:11434", alias="OLLAMA_BASE_URL")
+    ollama_embedding_model: str = Field(default="nomic-embed-text", alias="OLLAMA_EMBEDDING_MODEL")
+    ollama_generation_model: str = Field(default="llama3.2", alias="OLLAMA_GENERATION_MODEL")
+
+    voyage_api_key: str | None = Field(default=None, alias="VOYAGE_API_KEY")
     voyage_model: str = Field(default="voyage-code-3", alias="VOYAGE_MODEL")
 
-    anthropic_api_key: str = Field(alias="ANTHROPIC_API_KEY")
+    anthropic_api_key: str | None = Field(default=None, alias="ANTHROPIC_API_KEY")
     anthropic_model: str = Field(default="claude-sonnet-5", alias="ANTHROPIC_MODEL")
 
     github_token: str | None = Field(default=None, alias="GITHUB_TOKEN")
