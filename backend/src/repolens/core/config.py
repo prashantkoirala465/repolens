@@ -24,6 +24,8 @@ class Settings(BaseSettings):
 
     github_token: str | None = Field(default=None, alias="GITHUB_TOKEN")
 
+    cors_origins: list[str] = Field(default=["http://localhost:3000"], alias="CORS_ORIGINS")
+
     # Indexing bounds — see docs/adr/0005 (untrusted repo content is a threat surface).
     max_repo_size_mb: int = Field(default=250, alias="MAX_REPO_SIZE_MB")
     max_file_size_kb: int = Field(default=512, alias="MAX_FILE_SIZE_KB")
