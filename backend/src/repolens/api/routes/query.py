@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException
 from repolens.api.deps import SessionDep
 from repolens.core.config import get_settings
 from repolens.db.models import IndexStatus, Query, Repo
-from repolens.embeddings.voyage import VoyageEmbedder
+from repolens.embeddings.factory import get_embedder
 from repolens.generation.answer import generate_answer
 from repolens.retrieval.qdrant_store import search
 from repolens.schemas.query import QueryRequest, QueryResponse, RetrievedChunkResponse
@@ -25,7 +25,7 @@ async def query_repo(
             status_code=409, detail=f"repo is not ready to query (status={repo.status.value})"
         )
 
-    embedder = VoyageEmbedder()
+    embedder = get_embedder()
     query_vector = embedder.embed_query(request.question)
     retrieved = search(str(repo_id), query_vector, top_k=get_settings().retrieval_top_k)
 

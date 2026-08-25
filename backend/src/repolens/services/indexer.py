@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from repolens.chunking.walker import chunk_file, iter_indexable_files
 from repolens.core.logging import get_logger
 from repolens.db.models import IndexStatus, Repo
-from repolens.embeddings.voyage import VoyageEmbedder
+from repolens.embeddings.factory import get_embedder
 from repolens.retrieval.qdrant_store import delete_repo_chunks, ensure_collection, upsert_chunks
 from repolens.services.git import (
     CloneTimeoutError,
@@ -68,9 +68,9 @@ async def index_repo(session: AsyncSession, repo_id: uuid.UUID) -> None:
             return
 
         await _set_status(session, repo_id, IndexStatus.EMBEDDING)
-        ensure_collection()
+        embedder = get_embedder()
+        ensure_collection(embedder.dimension)
         delete_repo_chunks(str(repo_id))  # re-indexing: drop the prior version's chunks first
-        embedder = VoyageEmbedder()
         vectors = embedder.embed_documents([c.text for c in chunks])
         upsert_chunks(str(repo_id), chunks, vectors)
 

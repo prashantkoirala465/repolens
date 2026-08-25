@@ -21,8 +21,6 @@ from qdrant_client.models import (
 from repolens.chunking.base import Chunk
 from repolens.core.config import get_settings
 
-EMBEDDING_DIM = 1024  # voyage-code-3 output dimension
-
 
 @dataclass(frozen=True, slots=True)
 class RetrievedChunk:
@@ -39,14 +37,29 @@ def _client() -> QdrantClient:
     return QdrantClient(url=get_settings().qdrant_url)
 
 
-def ensure_collection() -> None:
+def ensure_collection(dimension: int) -> None:
+    """dimension comes from the configured embedder (Embedder.dimension), not a
+    hardcoded constant — Voyage and Ollama models don't share a vector space.
+    If a collection under this name already exists with a different dimension
+    (e.g. EMBEDDING_PROVIDER was switched), fail loudly instead of silently
+    returning garbage retrieval."""
     settings = get_settings()
     client = _client()
-    if not client.collection_exists(settings.qdrant_collection):
-        client.create_collection(
-            collection_name=settings.qdrant_collection,
-            vectors_config=VectorParams(size=EMBEDDING_DIM, distance=Distance.COSINE),
-        )
+    if client.collection_exists(settings.qdrant_collection):
+        existing = client.get_collection(settings.qdrant_collection)
+        existing_dim = existing.config.params.vectors.size  # type: ignore[union-attr]
+        if existing_dim != dimension:
+            raise ValueError(
+                f"Qdrant collection '{settings.qdrant_collection}' was built with "
+                f"{existing_dim}-dim vectors, but the configured embedder produces "
+                f"{dimension}-dim vectors. Set QDRANT_COLLECTION to a new name (or "
+                f"drop the old collection) after changing EMBEDDING_PROVIDER/model."
+            )
+        return
+    client.create_collection(
+        collection_name=settings.qdrant_collection,
+        vectors_config=VectorParams(size=dimension, distance=Distance.COSINE),
+    )
 
 
 def upsert_chunks(repo_id: str, chunks: list[Chunk], vectors: list[list[float]]) -> None:
