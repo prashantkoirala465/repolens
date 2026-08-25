@@ -2,6 +2,11 @@ from voyageai.client import Client as VoyageClient
 
 from repolens.core.config import get_settings
 
+# voyage-code-3's fixed output size. Hardcoded rather than probed at runtime
+# (contrast OllamaEmbedder) because probing would burn a paid API call for a
+# value that's already documented and fixed per model.
+_DIMENSION = 1024
+
 
 class VoyageEmbedder:
     """Thin wrapper around the Voyage client, batched.
@@ -27,3 +32,7 @@ class VoyageEmbedder:
     def embed_query(self, text: str) -> list[float]:
         result = self._client.embed([text], model=self._model, input_type="query")
         return [float(x) for x in result.embeddings[0]]
+
+    @property
+    def dimension(self) -> int:
+        return _DIMENSION
