@@ -24,8 +24,9 @@ assume.
 2. It's shallow-cloned, walked, and chunked — code by AST (tree-sitter, so a
    chunk is always a complete function/class, never a truncated fragment),
    docs by heading.
-3. Chunks are embedded (Voyage's code-specialized model) and indexed into
-   Qdrant.
+3. Chunks are embedded and indexed into Qdrant — locally via Ollama by
+   default (free, no API key), or Voyage's code-specialized model if you
+   opt into the cloud path.
 4. Ask a question. The answer is generated only from retrieved chunks, and
    every citation is checked server-side against what was actually retrieved
    before the response goes out — see [Security](#security).
@@ -37,9 +38,9 @@ flowchart LR
     Q --> W[arq worker]
     W -->|clone + parse| GH[GitHub]
     W -->|chunk: tree-sitter / heading-aware| CH[Chunker]
-    CH -->|embed: voyage-code-3| VDB[(Qdrant)]
+    CH -->|embed: Ollama or Voyage| VDB[(Qdrant)]
     API -->|hybrid search| VDB
-    API -->|generate w/ citations| LLM[Claude]
+    API -->|generate w/ citations| LLM[Ollama or Claude]
     API --> PG[(Postgres)]
 ```
 
@@ -57,6 +58,8 @@ to be reverse-engineered from the diff:
 - [0004](docs/adr/0004-task-queue-arq.md) — task queue: arq
 - [0005](docs/adr/0005-citation-validation-as-prompt-injection-defense.md) —
   citation validation as the actual prompt-injection defense
+- [0006](docs/adr/0006-local-model-support-via-ollama.md) — local models
+  (Ollama) as the default provider, cloud as opt-in
 
 ## API surface
 
@@ -69,14 +72,23 @@ to be reverse-engineered from the diff:
 
 ## Running it locally
 
+Zero-cost default — [install Ollama](https://ollama.com), pull the two small
+models the defaults expect, then bring up the stack:
+
 ```bash
+ollama pull nomic-embed-text
+ollama pull llama3.2
 cp .env.example .env
-# fill in VOYAGE_API_KEY and ANTHROPIC_API_KEY
 docker compose up
 ```
 
 The API comes up on `:8000`, the frontend on `:3000`. Postgres/Redis/Qdrant
-are health-checked and the app services wait on them before starting.
+are health-checked and the app services wait on them before starting; Ollama
+itself runs on the host, not in Docker (see ADR-0006 for why).
+
+Want better retrieval/answer quality and don't mind paying for it? Set
+`EMBEDDING_PROVIDER=voyage` and/or `GENERATION_PROVIDER=anthropic` in `.env`
+and fill in the matching API key — everything else stays the same.
 
 ## Security
 
