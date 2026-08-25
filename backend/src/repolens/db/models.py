@@ -30,7 +30,13 @@ class Repo(Base):
     default_branch: Mapped[str] = mapped_column(String(128), nullable=False, default="main")
     commit_sha: Mapped[str | None] = mapped_column(String(40), nullable=True)
     status: Mapped[IndexStatus] = mapped_column(
-        Enum(IndexStatus, name="index_status"), nullable=False, default=IndexStatus.QUEUED
+        # values_callable: SQLAlchemy's Enum type stores the member .name ("QUEUED")
+        # by default, but the Postgres enum type (alembic/versions/0001) only has the
+        # lowercase .value labels ("queued", ...) — without this, every insert fails
+        # with InvalidTextRepresentationError.
+        Enum(IndexStatus, name="index_status", values_callable=lambda cls: [e.value for e in cls]),
+        nullable=False,
+        default=IndexStatus.QUEUED,
     )
     status_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
     chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
