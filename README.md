@@ -1,13 +1,17 @@
 # RepoLens
 
+[![CI](https://github.com/prashantkoirala465/repolens/actions/workflows/ci.yml/badge.svg)](https://github.com/prashantkoirala465/repolens/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Ask questions about any public GitHub repo and get answers cited to the exact
 file and line range they came from. Same category as Sourcegraph Cody's `ask`
 or Cursor's `@codebase` — the difference is that retrieval quality here is
 something you can measure, not something you have to take on faith.
 
 **Status:** Phase 1 of 5 complete — clone → chunk → embed → index → query →
-cited answer works end to end. The eval harness (Phase 2, the actual point of
-this project) is next; see [Roadmap](#roadmap) below.
+cited answer works end to end, with unit tests and CI green on every push.
+The eval harness (Phase 2, the actual point of this project) is next; see
+[Roadmap](#roadmap).
 
 ## The problem
 
@@ -63,17 +67,24 @@ to be reverse-engineered from the diff:
 
 ## API surface
 
-| Method | Path                    | Description                                    |
-| ------ | ------------------------ | ----------------------------------------------- |
-| POST   | `/repos`                 | Index a repo (idempotent per `github_url`)      |
-| GET    | `/repos/{id}`            | Poll indexing status                            |
-| POST   | `/repos/{id}/query`      | Ask a question, get a cited answer              |
-| GET    | `/health`                | Liveness                                        |
+| Method | Path                | Description                                |
+| ------ | ------------------- | ------------------------------------------- |
+| POST   | `/repos`             | Index a repo (idempotent per `github_url`) |
+| GET    | `/repos/{id}`        | Poll indexing status                       |
+| POST   | `/repos/{id}/query`  | Ask a question, get a cited answer         |
+| GET    | `/health`            | Liveness                                   |
 
-## Running it locally
+## Getting started
 
-Zero-cost default — [install Ollama](https://ollama.com), pull the two small
-models the defaults expect, then bring up the stack:
+### Prerequisites
+
+- Docker and Docker Compose
+- [Ollama](https://ollama.com), running on the host — the default provider
+  path doesn't use any cloud API, but it does need Ollama installed
+  natively (not in Docker; see [ADR-0006](docs/adr/0006-local-model-support-via-ollama.md)
+  for why)
+
+### Quickstart
 
 ```bash
 ollama pull nomic-embed-text
@@ -83,12 +94,66 @@ docker compose up
 ```
 
 The API comes up on `:8000`, the frontend on `:3000`. Postgres/Redis/Qdrant
-are health-checked and the app services wait on them before starting; Ollama
-itself runs on the host, not in Docker (see ADR-0006 for why).
+are health-checked and the app services wait on them before starting.
 
 Want better retrieval/answer quality and don't mind paying for it? Set
 `EMBEDDING_PROVIDER=voyage` and/or `GENERATION_PROVIDER=anthropic` in `.env`
 and fill in the matching API key — everything else stays the same.
+
+### Development
+
+Running the backend and frontend directly (against the Postgres/Redis/Qdrant
+containers, without rebuilding a Docker image on every change):
+
+```bash
+# backend — needs uv (https://docs.astral.sh/uv/)
+cd backend
+uv sync
+uv run alembic upgrade head
+uv run uvicorn repolens.main:app --reload
+
+# frontend — needs pnpm
+cd frontend
+pnpm install
+pnpm dev
+```
+
+Checks that run in CI, runnable locally the same way:
+
+```bash
+cd backend
+uv run ruff check . && uv run ruff format --check .
+uv run mypy src
+uv run pytest tests/unit -v
+
+cd frontend
+pnpm run lint
+pnpm run test
+pnpm run build
+```
+
+Backend integration tests (`tests/integration`) run against real
+Postgres/Redis/Qdrant service containers; they're wired into `ci.yml` but
+currently gated off (`if: false`) pending the Phase 1 integration suite.
+
+## Project layout
+
+```
+backend/src/repolens/
+├── api/routes/     # FastAPI routers: repos, query, health
+├── chunking/       # tree-sitter AST chunking + fallback, markdown chunking
+├── embeddings/      # Embedder protocol, Ollama + Voyage implementations
+├── generation/      # Generator protocol, Ollama + Anthropic, citation validation
+├── retrieval/       # Qdrant collection management and search
+├── services/        # git cloning, the indexing pipeline
+├── workers/         # arq worker entrypoint and task
+└── db/              # SQLAlchemy models, session
+
+frontend/src/
+├── app/             # Next.js routes: repo submission, repo workspace
+├── components/      # RepoForm, QueryPanel, RetrievalInspector, StatusBadge
+└── lib/             # API client, TanStack Query provider
+```
 
 ## Security
 
@@ -105,6 +170,8 @@ the pipeline. What's bounded, and how:
   the response returns — see ADR-0005. The practical effect: an injected
   instruction can make the model say something wrong, but it can't forge
   evidence for a claim and there's no action surface for it to abuse.
+- **CI security scanning** — `gitleaks` on every push/PR for committed
+  secrets, `pip-audit` against the resolved backend dependency set.
 
 ## Roadmap
 
@@ -115,8 +182,8 @@ the pipeline. What's bounded, and how:
 - **Hybrid retrieval (Phase 3)** — BM25 + dense fusion via Qdrant's Query API,
   measured against the Phase 1 baseline through the eval harness before it's
   called an improvement.
-- **Hardening (Phase 4)** — rate limiting, structured observability, full CI
-  security scanning.
+- **Hardening (Phase 4)** — rate limiting, structured observability, the
+  currently-disabled integration suite turned on in CI.
 - Not planned: multi-tenant auth, private-repo support. This is a portfolio
   piece about retrieval quality, not a hosted product.
 
