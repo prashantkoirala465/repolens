@@ -1,7 +1,7 @@
 """Discovers and filters files worth indexing from a cloned repo checkout.
 
-Bounds file count/size deliberately — see docs/adr/0005: an arbitrary public
-repo is untrusted input, not just "more data to embed."
+Bounds file count/size deliberately: an arbitrary public repo is untrusted
+input, not just "more data to embed."
 """
 
 from pathlib import Path

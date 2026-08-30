@@ -1,7 +1,7 @@
 """Answer generation with server-validated citations.
 
-Retrieved repo content is untrusted (docs/adr/0005) — a malicious README
-could contain "ignore previous instructions" text. Two defenses:
+Retrieved repo content is untrusted — a malicious README could contain
+"ignore previous instructions" text. Two defenses:
   1. Retrieved chunks are wrapped in a data block, never placed where the
      model would read them as instructions (shared across providers, see
      generation/prompts.py).

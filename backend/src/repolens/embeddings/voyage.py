@@ -11,8 +11,8 @@ _DIMENSION = 1024
 class VoyageEmbedder:
     """Thin wrapper around the Voyage client, batched.
 
-    voyage-code-3 over OpenAI text-embedding-3-large: see docs/adr/0001 —
-    the deciding factor was code-retrieval benchmark performance, not price.
+    voyage-code-3 over OpenAI text-embedding-3-large: the deciding factor
+    was code-retrieval benchmark performance, not price.
     """
 
     def __init__(self) -> None:

@@ -1,4 +1,4 @@
-"""The citation-validation logic itself (docs/adr/0005's core defense) is
+"""The citation-validation logic — the actual prompt-injection defense — is
 exercised directly against the real function, not a hand-duplicated copy:
 only chunk_ids present in the retrieved set may survive, regardless of which
 generation provider produced them."""

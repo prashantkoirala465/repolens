@@ -1,7 +1,7 @@
 """Shallow-clones an untrusted public repo into a scratch directory.
 
-Threat model (docs/adr/0005): the URL and its content are user-supplied and
-untrusted. We only ever shell out to `git clone --depth 1`, never execute
+Threat model: the URL and its content are user-supplied and untrusted. We
+only ever shell out to `git clone --depth 1`, never execute
 anything from inside the checkout, bound the clone with a timeout, and cap
 the resulting tree size after the fact (git has no built-in "abort if the
 repo is too big" flag for a shallow clone).

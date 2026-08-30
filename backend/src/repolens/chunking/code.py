@@ -5,7 +5,7 @@ enclosing class/import context a reader needs to make sense of a snippet.
 Walking the AST and emitting whole top-level definitions avoids that at
 the cost of supporting a fixed, explicit set of languages — anything else
 falls back to `naive_chunk_text`, which is a known-worse but always-safe
-default (see docs/adr/0003).
+default.
 """
 
 from pathlib import Path
@@ -135,8 +135,8 @@ def chunk_code_file(file_path: str, text: str) -> list[Chunk]:
 
 def naive_chunk_text(file_path: str, text: str) -> list[Chunk]:
     """Fixed-window fallback for unsupported languages or parse failures.
-    Deliberately worse than AST chunking — see docs/adr/0003 for the
-    before/after eval-harness numbers this tradeoff was measured against."""
+    Deliberately worse than AST chunking; the eval harness (Phase 2) is what
+    measures whether that tradeoff is actually worth it."""
     lines = text.splitlines()
     if not lines:
         return []

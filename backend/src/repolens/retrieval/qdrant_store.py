@@ -1,8 +1,8 @@
 """Qdrant collection management and dense retrieval.
 
-Phase 1 is dense-only. Hybrid BM25+dense retrieval (docs/adr/0002) lands in
-Phase 3 once the eval harness exists to actually measure the improvement
-instead of asserting it.
+Phase 1 is dense-only. Hybrid BM25+dense retrieval lands in Phase 3 once the
+eval harness exists to actually measure the improvement instead of
+asserting it.
 """
 
 import uuid

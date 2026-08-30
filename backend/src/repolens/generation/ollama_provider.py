@@ -9,8 +9,8 @@ from repolens.retrieval.qdrant_store import RetrievedChunk
 
 # Ollama's `format` constrains token-level decoding to match this schema —
 # works with any served model, not just ones tuned for tool-calling, which is
-# what makes it the right mechanism for an "any local model" provider (see
-# docs/adr/0006). Same shape as the Anthropic tool's input_schema.
+# what makes it the right mechanism for an "any local model" provider. Same
+# shape as the Anthropic tool's input_schema.
 _ANSWER_SCHEMA = {
     "type": "object",
     "properties": {

@@ -1,6 +1,6 @@
 """Shared between every generation provider so the prompt-injection framing
-(docs/adr/0005) can't drift between them: retrieved chunks are always data,
-never instructions, regardless of which model reads them."""
+can't drift between them: retrieved chunks are always data, never
+instructions, regardless of which model reads them."""
 
 from repolens.retrieval.qdrant_store import RetrievedChunk
 

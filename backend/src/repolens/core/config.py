@@ -18,8 +18,8 @@ class Settings(BaseSettings):
     qdrant_collection: str = Field(default="repolens_chunks", alias="QDRANT_COLLECTION")
 
     # Ollama is the default for both providers: it's free and self-hosted, so the
-    # app boots and runs with no API keys at all — see docs/adr/0006. Voyage/
-    # Anthropic are opt-in for better retrieval/answer quality, not required.
+    # app boots and runs with no API keys at all. Voyage/Anthropic are opt-in
+    # for better retrieval/answer quality, not required.
     embedding_provider: Literal["voyage", "ollama"] = Field(
         default="ollama", alias="EMBEDDING_PROVIDER"
     )
@@ -41,7 +41,7 @@ class Settings(BaseSettings):
 
     cors_origins: list[str] = Field(default=["http://localhost:3000"], alias="CORS_ORIGINS")
 
-    # Indexing bounds — see docs/adr/0005 (untrusted repo content is a threat surface).
+    # Indexing bounds — an arbitrary public repo is untrusted input.
     max_repo_size_mb: int = Field(default=250, alias="MAX_REPO_SIZE_MB")
     max_file_size_kb: int = Field(default=512, alias="MAX_FILE_SIZE_KB")
     clone_timeout_s: int = Field(default=120, alias="CLONE_TIMEOUT_S")
