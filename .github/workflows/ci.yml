@@ -61,8 +61,6 @@ jobs:
       MIGRATION_DATABASE_URL: postgresql+asyncpg://repolens:repolens@localhost:5432/repolens_test
       REDIS_URL: redis://localhost:6379/0
       QDRANT_URL: http://localhost:6333
-      VOYAGE_API_KEY: test-key-unit-tests-do-not-call-the-api
-      ANTHROPIC_API_KEY: test-key-unit-tests-do-not-call-the-api
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
@@ -83,6 +81,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
       - uses: actions/setup-node@v4
         with:
           node-version: 22
