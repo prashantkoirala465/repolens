@@ -50,20 +50,24 @@ flowchart LR
 
 ## Design decisions
 
-The non-obvious calls — and why — are written down as ADRs rather than left
-to be reverse-engineered from the diff:
+The non-obvious calls in this codebase, and the reasoning behind them:
 
-- [0001](docs/adr/0001-embeddings-voyage-code-3.md) — embeddings: Voyage
-  `voyage-code-3` over OpenAI, on code-retrieval benchmark performance
-- [0002](docs/adr/0002-vector-store-qdrant-over-pgvector.md) — vector store:
-  Qdrant over pgvector, because hybrid search is core to the product
-- [0003](docs/adr/0003-chunking-ast-aware-over-fixed-width.md) — chunking:
-  AST-aware over fixed-width, with naive chunking as an explicit fallback
-- [0004](docs/adr/0004-task-queue-arq.md) — task queue: arq
-- [0005](docs/adr/0005-citation-validation-as-prompt-injection-defense.md) —
-  citation validation as the actual prompt-injection defense
-- [0006](docs/adr/0006-local-model-support-via-ollama.md) — local models
-  (Ollama) as the default provider, cloud as opt-in
+Embeddings run on Voyage's `voyage-code-3` rather than a general-purpose text
+embedder, because it measurably outperforms on code-retrieval benchmarks —
+the exact workload this project has. Qdrant was picked over pgvector so
+hybrid BM25 + dense search is a first-class, server-side capability instead
+of hand-rolled application logic. Chunking walks the tree-sitter AST instead
+of splitting on a fixed line count, so a chunk is always a complete function
+or class — never truncated mid-body — with naive fixed-width chunking kept
+only as a fallback for unsupported or unparseable files. Background indexing
+runs on arq rather than Celery, since the job shape (one async pipeline,
+report status) doesn't need Celery's routing/chains machinery. Every citation
+the model emits is validated server-side against what was actually
+retrieved, which is the real defense against prompt injection from untrusted
+repo content — not an attempt to detect the injection itself; see
+[Security](#security). Ollama is the default provider for both embeddings
+and generation, so the app runs with zero API keys and zero cost, with
+Voyage and Anthropic available as an opt-in upgrade.
 
 ## API surface
 
@@ -81,8 +85,9 @@ to be reverse-engineered from the diff:
 - Docker and Docker Compose
 - [Ollama](https://ollama.com), running on the host — the default provider
   path doesn't use any cloud API, but it does need Ollama installed
-  natively (not in Docker; see [ADR-0006](docs/adr/0006-local-model-support-via-ollama.md)
-  for why)
+  natively rather than in Docker: containers on macOS run in a Linux VM
+  with no GPU passthrough, so a containerized Ollama would be CPU-only and
+  dramatically slower
 
 ### Quickstart
 
@@ -167,9 +172,9 @@ the pipeline. What's bounded, and how:
   aimed at whatever eventually reads it. Retrieved chunks are framed as data,
   never as instructions, in the system prompt. More importantly, every
   citation the model emits is checked against the actual retrieved set before
-  the response returns — see ADR-0005. The practical effect: an injected
-  instruction can make the model say something wrong, but it can't forge
-  evidence for a claim and there's no action surface for it to abuse.
+  the response returns. The practical effect: an injected instruction can
+  make the model say something wrong, but it can't forge evidence for a
+  claim and there's no action surface for it to abuse.
 - **CI security scanning** — `gitleaks` on every push/PR for committed
   secrets, `pip-audit` against the resolved backend dependency set.
 
