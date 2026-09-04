@@ -40,7 +40,7 @@ async def create_repo(request: Request, payload: RepoCreateRequest, session: Ses
 
     redis = await create_pool(RedisSettings.from_dsn(get_settings().redis_url))
     await redis.enqueue_job("index_repo_task", str(repo.id))
-    await redis.close()
+    await redis.aclose()
 
     return repo
 

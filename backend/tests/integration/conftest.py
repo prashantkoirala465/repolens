@@ -17,12 +17,38 @@ from collections.abc import AsyncGenerator
 
 import pytest
 import pytest_asyncio
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
+import repolens.db.session as db_session_module
+from repolens.core.config import get_settings
 from repolens.db.models import Repo
 from repolens.db.session import get_session
 from repolens.generation.base import RawGeneration
 from repolens.retrieval.qdrant_store import RetrievedChunk, delete_repo_chunks
+
+
+@pytest_asyncio.fixture(autouse=True, scope="session")
+async def _nullpool_db_engine() -> AsyncGenerator[None]:
+    """TestClient runs the ASGI app in its own background thread with its
+    own event loop, separate from pytest-asyncio's session-scoped loop that
+    the db_session fixture uses — and both would otherwise share
+    db/session.py's process-wide QueuePool, where an asyncpg connection
+    checked out under one loop breaks ("attached to a different loop") if
+    handed back under another, whether that's between two tests or within
+    one test that mixes db_session with a TestClient call.
+
+    NullPool removes connection reuse entirely: every checkout is a fresh
+    connection under whichever loop asks. Right tradeoff for a test suite;
+    doesn't touch production pooling behavior, which never sees more than
+    one loop in the first place (a single long-running uvicorn process).
+    """
+    settings = get_settings()
+    engine = create_async_engine(settings.database_url, poolclass=NullPool)
+    db_session_module._engine = engine
+    db_session_module._session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    yield
+    await engine.dispose()
 
 
 class FakeEmbedder:
