@@ -8,12 +8,13 @@ file and line range they came from. Same category as Sourcegraph Cody's `ask`
 or Cursor's `@codebase` — the difference is that retrieval quality here is
 something you can measure, not something you have to take on faith.
 
-**Status:** Phase 2 of 5 complete. Phase 1 (clone → chunk → embed → index →
+**Status:** Phase 3 of 5 complete. Phase 1 (clone → chunk → embed → index →
 query → cited answer) works end to end, with unit tests and CI green on
-every push. Phase 2, the actual point of this project, is a working eval
-harness with a hand-verified benchmark — see
-[Measuring retrieval quality](#measuring-retrieval-quality). Hybrid
-retrieval (Phase 3) is next; see [Roadmap](#roadmap).
+every push. Phase 2 built a real eval harness with a hand-verified
+benchmark. Phase 3 (hybrid BM25 + dense retrieval) is live by default,
+measured against the Phase 2 baseline before it became the default — see
+[Measuring retrieval quality](#measuring-retrieval-quality). Hardening
+(Phase 4) is next; see [Roadmap](#roadmap).
 
 ## The problem
 
@@ -30,12 +31,15 @@ assume.
 2. It's shallow-cloned, walked, and chunked — code by AST (tree-sitter, so a
    chunk is always a complete function/class, never a truncated fragment),
    docs by heading.
-3. Chunks are embedded and indexed into Qdrant — locally via Ollama by
-   default (free, no API key), or Voyage's code-specialized model if you
-   opt into the cloud path.
-4. Ask a question. The answer is generated only from retrieved chunks, and
-   every citation is checked server-side against what was actually retrieved
-   before the response goes out — see [Security](#security).
+3. Chunks are embedded (locally via Ollama by default, or Voyage's
+   code-specialized model in the cloud path) and indexed into Qdrant with
+   both a dense vector and a BM25 sparse vector.
+4. Ask a question. Retrieval fuses dense + BM25 search server-side
+   (`RETRIEVAL_MODE=hybrid` by default — see
+   [Measuring retrieval quality](#measuring-retrieval-quality) for why). The
+   answer is generated only from retrieved chunks, and every citation is
+   checked server-side against what was actually retrieved before the
+   response goes out — see [Security](#security).
 
 ```mermaid
 flowchart LR
@@ -58,7 +62,12 @@ Embeddings run on Voyage's `voyage-code-3` rather than a general-purpose text
 embedder, because it measurably outperforms on code-retrieval benchmarks —
 the exact workload this project has. Qdrant was picked over pgvector so
 hybrid BM25 + dense search is a first-class, server-side capability instead
-of hand-rolled application logic. Chunking walks the tree-sitter AST instead
+of hand-rolled application logic. BM25 term-frequency vectors are hand-rolled
+in `retrieval/sparse.py` rather than pulled from `fastembed`'s reference
+`Qdrant/bm25` model — its `onnxruntime`/`Pillow` dependencies are overhead
+for neural embedders this project never uses, when the actual client-side
+job (Qdrant computes IDF server-side) is just tokenize-count-saturate, well
+inside the standard library. Chunking walks the tree-sitter AST instead
 of splitting on a fixed line count, so a chunk is always a complete function
 or class — never truncated mid-body — with naive fixed-width chunking kept
 only as a fallback for unsupported or unparseable files. Background indexing
@@ -152,7 +161,7 @@ backend/src/repolens/
 ├── embeddings/      # Embedder protocol, Ollama + Voyage implementations
 ├── eval/            # retrieval benchmark, metrics, repolens-eval CLI
 ├── generation/      # Generator protocol, Ollama + Anthropic, citation validation
-├── retrieval/       # Qdrant collection management and search
+├── retrieval/       # Qdrant collection mgmt, hybrid (BM25 + dense) search
 ├── services/        # git cloning, the indexing pipeline
 ├── workers/         # arq worker entrypoint and task
 └── db/              # SQLAlchemy models, session
@@ -183,30 +192,42 @@ commit, not by guessing line numbers.
 ```bash
 cd backend
 uv run repolens-eval run \
-  --benchmark src/repolens/eval/benchmarks/requests.json \
-  --out results/baseline.json
+  --benchmark src/repolens/eval/benchmarks/requests.json --mode dense \
+  --out results/dense.json
 
-uv run repolens-eval diff results/baseline.json results/candidate.json
+uv run repolens-eval run \
+  --benchmark src/repolens/eval/benchmarks/requests.json --mode hybrid \
+  --out results/hybrid.json
+
+uv run repolens-eval diff results/dense.json results/hybrid.json
 ```
 
 `run` indexes the benchmark's pinned commit into a Qdrant id scoped to that
 run (`eval:{owner}/{name}@{commit}`), completely isolated from anything
 indexed through the app, and writes per-question and aggregate metrics
-alongside the config that produced them (embedding provider/model, k
-values). `diff` compares two result files and flags any question whose MRR
-or recall regressed — this is what Phase 3 will use to prove hybrid
-retrieval is actually better, instead of asserting it.
+alongside the config that produced them (retrieval mode, embedding
+provider/model, k values). `--mode` is independent of the app's own
+`RETRIEVAL_MODE` — the entire point is comparing two strategies side by
+side. `diff` compares two result files and flags any question whose MRR or
+recall regressed.
 
-A real run against the default `ollama`/`nomic-embed-text` path, dense-only
-retrieval, top-10:
+This is exactly how Phase 3 (hybrid retrieval) got decided — not asserted.
+Dense-only vs. hybrid (BM25 + dense, RRF fusion), same pinned commit, same
+`ollama`/`nomic-embed-text` embeddings:
 
-| metric | @5 | @10 |
-| --- | --- | --- |
-| precision | 0.173 | 0.107 |
-| recall | 0.644 | 0.844 |
-| nDCG | 0.461 | 0.531 |
+| metric | dense@5 | hybrid@5 | dense@10 | hybrid@10 |
+| --- | --- | --- | --- | --- |
+| precision | 0.173 | 0.160 | 0.107 | 0.100 |
+| recall | 0.644 | 0.644 | 0.844 | 0.844 |
+| nDCG | 0.461 | 0.514 | 0.531 | 0.579 |
 
-MRR: 0.481. These are the numbers Phase 3's hybrid retrieval has to beat.
+MRR: 0.481 (dense) → 0.552 (hybrid). Not a clean sweep — precision dips
+slightly at both cutoffs, and 3 of the 15 questions individually regressed
+on MRR (`session-cookie-persistence`, `session-setting-merge`,
+`digest-auth-401-retry`). But recall is unchanged and both ranking-quality
+metrics improve meaningfully: hybrid finds the same relevant chunks and
+ranks them higher on average. That's what earned `RETRIEVAL_MODE=hybrid`
+its default — a net win, reported in full rather than cherry-picked.
 
 ## Security
 
@@ -230,9 +251,10 @@ the pipeline. What's bounded, and how:
 
 - ~~**Eval harness (Phase 2)**~~ — done; see
   [Measuring retrieval quality](#measuring-retrieval-quality).
-- **Hybrid retrieval (Phase 3)** — BM25 + dense fusion via Qdrant's Query API,
-  measured against the Phase 2 dense-only baseline through `repolens-eval diff`
-  before it's called an improvement.
+- ~~**Hybrid retrieval (Phase 3)**~~ — done; BM25 + dense fusion via Qdrant's
+  Query API, on by default after measuring a net win over the Phase 2
+  dense-only baseline — see
+  [Measuring retrieval quality](#measuring-retrieval-quality).
 - **Hardening (Phase 4)** — rate limiting, structured observability, the
   currently-disabled integration suite turned on in CI.
 - Not planned: multi-tenant auth, private-repo support. This is a portfolio
