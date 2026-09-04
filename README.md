@@ -8,15 +8,13 @@ file and line range they came from. Same category as Sourcegraph Cody's `ask`
 or Cursor's `@codebase` — the difference is that retrieval quality here is
 something you can measure, not something you have to take on faith.
 
-**Status:** All 4 planned phases complete. Phase 1 (clone → chunk → embed →
-index → query → cited answer) works end to end, with unit tests and CI
-green on every push. Phase 2 built a real eval harness with a hand-verified
-benchmark. Phase 3 (hybrid BM25 + dense retrieval) is live by default,
-measured against the Phase 2 baseline before it became the default — see
-[Measuring retrieval quality](#measuring-retrieval-quality). Phase 4
-(rate limiting, request-correlated structured logging, a real integration
-suite against live Postgres/Redis/Qdrant) is done — see
-[Security](#security) and [Roadmap](#roadmap).
+**Status:** Feature-complete and CI-green — clone → chunk → embed → index →
+hybrid retrieval → cited answer, end to end. Retrieval quality is measured,
+not asserted (see [Measuring retrieval quality](#measuring-retrieval-quality)),
+and the service is hardened for real traffic: rate limiting, request-
+correlated structured logging, an integration suite against live
+Postgres/Redis/Qdrant in CI (see [Security](#security)). All four planned
+phases are done — see [Roadmap](#roadmap) for how it got here.
 
 ## The problem
 
@@ -60,36 +58,40 @@ flowchart LR
 
 The non-obvious calls in this codebase, and the reasoning behind them:
 
-Embeddings run on Voyage's `voyage-code-3` rather than a general-purpose text
-embedder, because it measurably outperforms on code-retrieval benchmarks —
-the exact workload this project has. Qdrant was picked over pgvector so
-hybrid BM25 + dense search is a first-class, server-side capability instead
-of hand-rolled application logic. BM25 term-frequency vectors are hand-rolled
-in `retrieval/sparse.py` rather than pulled from `fastembed`'s reference
-`Qdrant/bm25` model — its `onnxruntime`/`Pillow` dependencies are overhead
-for neural embedders this project never uses, when the actual client-side
-job (Qdrant computes IDF server-side) is just tokenize-count-saturate, well
-inside the standard library. Chunking walks the tree-sitter AST instead
-of splitting on a fixed line count, so a chunk is always a complete function
-or class — never truncated mid-body — with naive fixed-width chunking kept
-only as a fallback for unsupported or unparseable files. Background indexing
-runs on arq rather than Celery, since the job shape (one async pipeline,
-report status) doesn't need Celery's routing/chains machinery. Every citation
-the model emits is validated server-side against what was actually
-retrieved, which is the real defense against prompt injection from untrusted
-repo content — not an attempt to detect the injection itself; see
-[Security](#security). Ollama is the default provider for both embeddings
-and generation, so the app runs with zero API keys and zero cost, with
-Voyage and Anthropic available as an opt-in upgrade.
+- **Voyage's `voyage-code-3`** over a general-purpose text embedder — it
+  measurably outperforms on code-retrieval benchmarks, the exact workload
+  this project has.
+- **Qdrant over pgvector** so hybrid BM25 + dense search is a first-class,
+  server-side capability instead of hand-rolled application logic.
+- **Hand-rolled BM25 term-frequency vectors** (`retrieval/sparse.py`)
+  instead of `fastembed`'s reference `Qdrant/bm25` model — its
+  `onnxruntime`/`Pillow` dependencies are overhead for neural embedders
+  this project never uses, when the actual client-side job (Qdrant computes
+  IDF server-side) is just tokenize-count-saturate, well inside the
+  standard library.
+- **Tree-sitter AST chunking** instead of splitting on a fixed line count,
+  so a chunk is always a complete function or class — never truncated
+  mid-body — with naive fixed-width chunking kept only as a fallback for
+  unsupported or unparseable files.
+- **arq over Celery** for background indexing, since the job shape (one
+  async pipeline, report status) doesn't need Celery's routing/chains
+  machinery.
+- **Server-side citation validation** — every citation the model emits is
+  checked against what was actually retrieved, which is the real defense
+  against prompt injection from untrusted repo content, not an attempt to
+  detect the injection itself; see [Security](#security).
+- **Ollama as the default provider** for both embeddings and generation, so
+  the app runs with zero API keys and zero cost, with Voyage and Anthropic
+  available as an opt-in upgrade.
 
 ## API surface
 
-| Method | Path                | Description                                |
-| ------ | ------------------- | ------------------------------------------- |
-| POST   | `/repos`             | Index a repo (idempotent per `github_url`) |
-| GET    | `/repos/{id}`        | Poll indexing status                       |
-| POST   | `/repos/{id}/query`  | Ask a question, get a cited answer         |
-| GET    | `/health`            | Liveness                                   |
+| Method | Path                  | Description                                 |
+| ------ | --------------------- | -------------------------------------------- |
+| POST   | `/repos`              | Index a repo (idempotent per `github_url`)  |
+| GET    | `/repos/{id}`         | Poll indexing status                        |
+| POST   | `/repos/{id}/query`   | Ask a question, get a cited answer          |
+| GET    | `/health`             | Liveness                                    |
 
 ## Getting started
 
@@ -272,6 +274,9 @@ one `request_id` to grep for, not a set of timestamps to correlate by hand.
 
 ## Roadmap
 
+- ~~**Core pipeline (Phase 1)**~~ — done; clone → chunk → embed → index →
+  query → cited answer, end to end, with unit tests and CI green on every
+  push.
 - ~~**Eval harness (Phase 2)**~~ — done; see
   [Measuring retrieval quality](#measuring-retrieval-quality).
 - ~~**Hybrid retrieval (Phase 3)**~~ — done; BM25 + dense fusion via Qdrant's
