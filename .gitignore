@@ -22,3 +22,6 @@ build/
 node_modules/
 .next/
 frontend/out/
+
+# local repolens-eval run output — never the benchmark data itself
+backend/results/

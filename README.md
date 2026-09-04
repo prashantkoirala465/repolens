@@ -8,10 +8,12 @@ file and line range they came from. Same category as Sourcegraph Cody's `ask`
 or Cursor's `@codebase` — the difference is that retrieval quality here is
 something you can measure, not something you have to take on faith.
 
-**Status:** Phase 1 of 5 complete — clone → chunk → embed → index → query →
-cited answer works end to end, with unit tests and CI green on every push.
-The eval harness (Phase 2, the actual point of this project) is next; see
-[Roadmap](#roadmap).
+**Status:** Phase 2 of 5 complete. Phase 1 (clone → chunk → embed → index →
+query → cited answer) works end to end, with unit tests and CI green on
+every push. Phase 2, the actual point of this project, is a working eval
+harness with a hand-verified benchmark — see
+[Measuring retrieval quality](#measuring-retrieval-quality). Hybrid
+retrieval (Phase 3) is next; see [Roadmap](#roadmap).
 
 ## The problem
 
@@ -148,6 +150,7 @@ backend/src/repolens/
 ├── api/routes/     # FastAPI routers: repos, query, health
 ├── chunking/       # tree-sitter AST chunking + fallback, markdown chunking
 ├── embeddings/      # Embedder protocol, Ollama + Voyage implementations
+├── eval/            # retrieval benchmark, metrics, repolens-eval CLI
 ├── generation/      # Generator protocol, Ollama + Anthropic, citation validation
 ├── retrieval/       # Qdrant collection management and search
 ├── services/        # git cloning, the indexing pipeline
@@ -159,6 +162,51 @@ frontend/src/
 ├── components/      # RepoForm, QueryPanel, RetrievalInspector, StatusBadge
 └── lib/             # API client, TanStack Query provider
 ```
+
+## Measuring retrieval quality
+
+Retrieval quality claims are worthless without a benchmark to back them, so
+this project has one: `repolens-eval`, a CLI that indexes a repo pinned at
+an exact commit, runs a hand-verified set of questions against it, and
+scores the results with precision@k, recall@k, MRR, and nDCG@k — not
+assertions in a test suite, actual numbers from an actual retrieval run.
+
+Ground truth is a set of `(file_path, start_line, end_line)` answer
+locations per question, not exact `chunk_id`s — a retrieved chunk counts as
+relevant if it overlaps a labeled span, which survives minor chunk-boundary
+drift without needing the benchmark relabeled. The shipped benchmark
+(`backend/src/repolens/eval/benchmarks/requests.json`) has 15 questions
+against [`psf/requests`](https://github.com/psf/requests) pinned at a fixed
+commit — each one checked by actually chunking the real source at that
+commit, not by guessing line numbers.
+
+```bash
+cd backend
+uv run repolens-eval run \
+  --benchmark src/repolens/eval/benchmarks/requests.json \
+  --out results/baseline.json
+
+uv run repolens-eval diff results/baseline.json results/candidate.json
+```
+
+`run` indexes the benchmark's pinned commit into a Qdrant id scoped to that
+run (`eval:{owner}/{name}@{commit}`), completely isolated from anything
+indexed through the app, and writes per-question and aggregate metrics
+alongside the config that produced them (embedding provider/model, k
+values). `diff` compares two result files and flags any question whose MRR
+or recall regressed — this is what Phase 3 will use to prove hybrid
+retrieval is actually better, instead of asserting it.
+
+A real run against the default `ollama`/`nomic-embed-text` path, dense-only
+retrieval, top-10:
+
+| metric | @5 | @10 |
+| --- | --- | --- |
+| precision | 0.173 | 0.107 |
+| recall | 0.644 | 0.844 |
+| nDCG | 0.461 | 0.531 |
+
+MRR: 0.481. These are the numbers Phase 3's hybrid retrieval has to beat.
 
 ## Security
 
@@ -180,13 +228,11 @@ the pipeline. What's bounded, and how:
 
 ## Roadmap
 
-- **Eval harness (Phase 2)** — a hand-labeled benchmark (LLM-drafted
-  candidates, human-verified) with precision@k/recall@k/MRR/nDCG, and an
-  `eval diff` CLI to compare retrieval strategies with real numbers instead of
-  assertions.
+- ~~**Eval harness (Phase 2)**~~ — done; see
+  [Measuring retrieval quality](#measuring-retrieval-quality).
 - **Hybrid retrieval (Phase 3)** — BM25 + dense fusion via Qdrant's Query API,
-  measured against the Phase 1 baseline through the eval harness before it's
-  called an improvement.
+  measured against the Phase 2 dense-only baseline through `repolens-eval diff`
+  before it's called an improvement.
 - **Hardening (Phase 4)** — rate limiting, structured observability, the
   currently-disabled integration suite turned on in CI.
 - Not planned: multi-tenant auth, private-repo support. This is a portfolio
