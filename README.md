@@ -8,13 +8,15 @@ file and line range they came from. Same category as Sourcegraph Cody's `ask`
 or Cursor's `@codebase` — the difference is that retrieval quality here is
 something you can measure, not something you have to take on faith.
 
-**Status:** Phase 3 of 5 complete. Phase 1 (clone → chunk → embed → index →
-query → cited answer) works end to end, with unit tests and CI green on
-every push. Phase 2 built a real eval harness with a hand-verified
+**Status:** All 4 planned phases complete. Phase 1 (clone → chunk → embed →
+index → query → cited answer) works end to end, with unit tests and CI
+green on every push. Phase 2 built a real eval harness with a hand-verified
 benchmark. Phase 3 (hybrid BM25 + dense retrieval) is live by default,
 measured against the Phase 2 baseline before it became the default — see
-[Measuring retrieval quality](#measuring-retrieval-quality). Hardening
-(Phase 4) is next; see [Roadmap](#roadmap).
+[Measuring retrieval quality](#measuring-retrieval-quality). Phase 4
+(rate limiting, request-correlated structured logging, a real integration
+suite against live Postgres/Redis/Qdrant) is done — see
+[Security](#security) and [Roadmap](#roadmap).
 
 ## The problem
 
@@ -148,9 +150,16 @@ pnpm run test
 pnpm run build
 ```
 
-Backend integration tests (`tests/integration`) run against real
-Postgres/Redis/Qdrant service containers; they're wired into `ci.yml` but
-currently gated off (`if: false`) pending the Phase 1 integration suite.
+Backend integration tests (`tests/integration`) run in CI against real
+Postgres/Redis/Qdrant service containers — no Ollama needed, a fake
+Embedder/Generator (`tests/integration/conftest.py`) stand in, so what's
+under test is the pipeline wiring, not model quality. Runnable locally
+against your own Postgres/Redis/Qdrant:
+
+```bash
+uv run alembic upgrade head
+uv run pytest tests/integration -v
+```
 
 ## Project layout
 
@@ -158,6 +167,7 @@ currently gated off (`if: false`) pending the Phase 1 integration suite.
 backend/src/repolens/
 ├── api/routes/     # FastAPI routers: repos, query, health
 ├── chunking/       # tree-sitter AST chunking + fallback, markdown chunking
+├── core/            # settings, rate limiting, request-correlation middleware
 ├── embeddings/      # Embedder protocol, Ollama + Voyage implementations
 ├── eval/            # retrieval benchmark, metrics, repolens-eval CLI
 ├── generation/      # Generator protocol, Ollama + Anthropic, citation validation
@@ -244,8 +254,21 @@ the pipeline. What's bounded, and how:
   the response returns. The practical effect: an injected instruction can
   make the model say something wrong, but it can't forge evidence for a
   claim and there's no action surface for it to abuse.
+- **Rate limiting** — Redis-backed (`slowapi`, reusing arq's already-deployed
+  Redis rather than in-memory limits, which aren't correct once there's more
+  than one uvicorn worker process) on the two routes with real compute/cost
+  behind them: `POST /repos` (clone + embed) and `POST .../query`
+  (generation). Configurable via `RATE_LIMIT_REPOS`/`RATE_LIMIT_QUERY`,
+  defaulting to 5/minute and 20/minute.
 - **CI security scanning** — `gitleaks` on every push/PR for committed
   secrets, `pip-audit` against the resolved backend dependency set.
+
+Every request also gets a `request_id` (from `X-Request-ID`, or a fresh one)
+bound to every log line it produces — including from deep inside
+chunking/embedding helpers, not just the route handler — plus one structured
+`http.request` access log with status and duration. Useful for security
+review as much as debugging: a suspicious sequence of requests is
+one `request_id` to grep for, not a set of timestamps to correlate by hand.
 
 ## Roadmap
 
@@ -255,8 +278,9 @@ the pipeline. What's bounded, and how:
   Query API, on by default after measuring a net win over the Phase 2
   dense-only baseline — see
   [Measuring retrieval quality](#measuring-retrieval-quality).
-- **Hardening (Phase 4)** — rate limiting, structured observability, the
-  currently-disabled integration suite turned on in CI.
+- ~~**Hardening (Phase 4)**~~ — done; Redis-backed rate limiting, request-
+  correlated structured logging, and a real integration suite (`tests/integration`)
+  against live Postgres/Redis/Qdrant, on in CI — see [Security](#security).
 - Not planned: multi-tenant auth, private-repo support. This is a portfolio
   piece about retrieval quality, not a hosted product.
 

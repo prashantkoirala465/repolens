@@ -67,11 +67,11 @@ jobs:
       - run: uv python install 3.12
       - run: uv sync
       - run: uv run pytest tests/unit -v
-      # Integration tests hit real Postgres/Redis/Qdrant service containers, gated
-      # separately from unit tests the same way waybill/sift gate theirs.
+      # Integration tests hit these real Postgres/Redis/Qdrant service
+      # containers directly — fake Embedder/Generator (tests/integration/conftest.py)
+      # stand in for Ollama/Voyage/Anthropic, which aren't available here.
       - run: uv run alembic upgrade head
       - run: uv run pytest tests/integration -v
-        if: false # enabled once Phase 1's integration suite lands
 
   frontend:
     runs-on: ubuntu-latest
