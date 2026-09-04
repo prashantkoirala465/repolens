@@ -49,10 +49,13 @@ class Settings(BaseSettings):
 
     embedding_batch_size: int = Field(default=64, alias="EMBEDDING_BATCH_SIZE")
     retrieval_top_k: int = Field(default=8, alias="RETRIEVAL_TOP_K")
-    # "dense" until the Phase 3 eval comparison (README: Measuring retrieval
-    # quality) says hybrid wins outright; both are always indexed regardless
-    # of this setting, so flipping it never requires re-indexing.
-    retrieval_mode: Literal["dense", "hybrid"] = Field(default="dense", alias="RETRIEVAL_MODE")
+    # Measured via `repolens-eval diff` against the psf/requests benchmark
+    # (README: Measuring retrieval quality): hybrid wins on MRR (+0.071) and
+    # nDCG (+0.05 at both k=5/10) with recall unchanged, at a small precision
+    # cost (-0.01) — a real net win, not a clean sweep. Both vector types are
+    # always indexed regardless of this setting, so flipping it never
+    # requires re-indexing.
+    retrieval_mode: Literal["dense", "hybrid"] = Field(default="hybrid", alias="RETRIEVAL_MODE")
 
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
