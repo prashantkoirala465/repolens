@@ -26,6 +26,9 @@ dependencies = [
     "click>=8.1",
 ]
 
+[project.scripts]
+repolens-eval = "repolens.eval.cli:cli"
+
 [dependency-groups]
 dev = [
     "pytest>=8.3",
