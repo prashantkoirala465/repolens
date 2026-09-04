@@ -1,0 +1,114 @@
+{
+  "repo_url": "https://github.com/psf/requests",
+  "commit": "dae7ef63b4df6eded86637f251fc4e3a06c3b479",
+  "questions": [
+    {
+      "id": "session-cookie-persistence",
+      "question": "How does a Session persist cookies received in a response so they're automatically sent on the next request made with the same Session?",
+      "relevant_spans": [
+        { "file_path": "src/requests/sessions.py", "start_line": 752, "end_line": 829 }
+      ]
+    },
+    {
+      "id": "session-setting-merge",
+      "question": "When both a per-request setting (like headers or proxies) and a Session-level default are given, how does requests decide which one wins?",
+      "relevant_spans": [
+        { "file_path": "src/requests/sessions.py", "start_line": 76, "end_line": 104 }
+      ]
+    },
+    {
+      "id": "session-hooks-merge",
+      "question": "How are event hooks from a Session and from an individual Request merged when both define hooks for the same event?",
+      "relevant_spans": [
+        { "file_path": "src/requests/sessions.py", "start_line": 108, "end_line": 125 }
+      ]
+    },
+    {
+      "id": "adapter-timeout-exception-mapping",
+      "question": "What exception does requests raise when the underlying connection times out waiting for the server to respond?",
+      "relevant_spans": [
+        { "file_path": "src/requests/adapters.py", "start_line": 634, "end_line": 748 }
+      ]
+    },
+    {
+      "id": "adapter-cert-verify-ca-bundle",
+      "question": "Where does HTTPAdapter get the default CA bundle path it uses to verify a server's TLS certificate?",
+      "relevant_spans": [
+        { "file_path": "src/requests/adapters.py", "start_line": 307, "end_line": 363 }
+      ]
+    },
+    {
+      "id": "cookie-dict-to-jar",
+      "question": "How does requests convert a plain dict of cookies into a cookielib.CookieJar?",
+      "relevant_spans": [
+        { "file_path": "src/requests/cookies.py", "start_line": 579, "end_line": 600 }
+      ]
+    },
+    {
+      "id": "basic-auth-header-value",
+      "question": "How is the Authorization header value computed for HTTP Basic Auth?",
+      "relevant_spans": [
+        { "file_path": "src/requests/auth.py", "start_line": 34, "end_line": 75 }
+      ]
+    },
+    {
+      "id": "digest-auth-401-retry",
+      "question": "How does HTTPDigestAuth respond to a 401 challenge, and does it automatically retry the original request with credentials?",
+      "relevant_spans": [
+        { "file_path": "src/requests/auth.py", "start_line": 273, "end_line": 318 }
+      ]
+    },
+    {
+      "id": "body-length-for-content-length",
+      "question": "How does requests determine the length of a request body, including file-like objects, in order to set the Content-Length header?",
+      "relevant_spans": [
+        { "file_path": "src/requests/utils.py", "start_line": 160, "end_line": 227 }
+      ]
+    },
+    {
+      "id": "response-encoding-fallback",
+      "question": "When a server's response headers don't declare an explicit charset, how does requests decide what encoding to use when decoding the response body?",
+      "relevant_spans": [
+        { "file_path": "src/requests/utils.py", "start_line": 569, "end_line": 591 },
+        { "file_path": "src/requests/adapters.py", "start_line": 365, "end_line": 399 },
+        { "file_path": "src/requests/models.py", "start_line": 1054, "end_line": 1088 }
+      ]
+    },
+    {
+      "id": "response-json-decode-error",
+      "question": "What happens when you call response.json() on a response whose body isn't valid JSON?",
+      "relevant_spans": [
+        { "file_path": "src/requests/models.py", "start_line": 1091, "end_line": 1120 }
+      ]
+    },
+    {
+      "id": "url-idna-encoding",
+      "question": "How does PreparedRequest handle a URL whose hostname contains non-ASCII characters when building the final request URL?",
+      "relevant_spans": [
+        { "file_path": "src/requests/models.py", "start_line": 474, "end_line": 481 },
+        { "file_path": "src/requests/models.py", "start_line": 483, "end_line": 561 }
+      ]
+    },
+    {
+      "id": "default-headers-and-user-agent",
+      "question": "What headers does requests send by default on every request, and how is the default User-Agent string built?",
+      "relevant_spans": [
+        { "file_path": "src/requests/utils.py", "start_line": 942, "end_line": 961 }
+      ]
+    },
+    {
+      "id": "top-level-request-function",
+      "question": "How does the module-level requests.request() function actually send a request — what object does it construct internally?",
+      "relevant_spans": [
+        { "file_path": "src/requests/api.py", "start_line": 24, "end_line": 73 }
+      ]
+    },
+    {
+      "id": "readme-minimum-python-version",
+      "question": "According to the project's own README, what is the minimum Python version Requests officially supports?",
+      "relevant_spans": [
+        { "file_path": "README.md", "start_line": 30, "end_line": 39 }
+      ]
+    }
+  ]
+}
