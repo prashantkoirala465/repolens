@@ -7,6 +7,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from repolens.api.routes import health, query, repos
 from repolens.core.config import get_settings
 from repolens.core.logging import configure_logging
+from repolens.core.middleware import RequestContextMiddleware
 from repolens.core.rate_limit import limiter
 
 settings = get_settings()
@@ -33,6 +34,12 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
 )
+
+# add_middleware inserts at the front of Starlette's middleware list, and
+# the front ends up outermost — added last, this wraps everything above it
+# (CORS, rate limiting), so even a 429 or a CORS-rejected request gets a
+# request_id and an access log line.
+app.add_middleware(RequestContextMiddleware)
 
 app.include_router(health.router)
 app.include_router(repos.router)

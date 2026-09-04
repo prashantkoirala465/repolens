@@ -1,5 +1,6 @@
 import uuid
 
+import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -45,6 +46,12 @@ async def index_repo(session: AsyncSession, repo_id: uuid.UUID) -> None:
 
     from repolens.services.git import parse_github_url
 
+    # Bound once, cleared once: every log line for the rest of this job —
+    # including from chunking/embedding helpers that never see repo_id
+    # directly — carries it automatically via the merge_contextvars
+    # processor (core/logging.py), instead of re-passing repo=... per call.
+    structlog.contextvars.bind_contextvars(repo_id=str(repo_id), github_url=repo.github_url)
+
     parsed = parse_github_url(repo.github_url)
     checkout = None
     try:
@@ -55,12 +62,7 @@ async def index_repo(session: AsyncSession, repo_id: uuid.UUID) -> None:
         await _set_status(session, repo_id, IndexStatus.CHUNKING)
         files = iter_indexable_files(checkout)
         chunks = [c for path in files for c in chunk_file(checkout, path)]
-        logger.info(
-            "index_repo.chunked",
-            repo=repo.github_url,
-            file_count=len(files),
-            chunk_count=len(chunks),
-        )
+        logger.info("index_repo.chunked", file_count=len(files), chunk_count=len(chunks))
 
         if not chunks:
             await _set_status(
@@ -79,20 +81,21 @@ async def index_repo(session: AsyncSession, repo_id: uuid.UUID) -> None:
 
         repo.chunk_count = len(chunks)
         await _set_status(session, repo_id, IndexStatus.READY)
-        logger.info("index_repo.ready", repo=repo.github_url, chunk_count=len(chunks))
+        logger.info("index_repo.ready", chunk_count=len(chunks))
 
     except RepoTooLargeError as exc:
         await _set_status(session, repo_id, IndexStatus.FAILED, detail=str(exc))
     except CloneTimeoutError as exc:
         await _set_status(session, repo_id, IndexStatus.FAILED, detail=str(exc))
     except Exception as exc:  # noqa: BLE001 - surfaced to the user via status_detail, not swallowed
-        logger.exception("index_repo.failed", repo=repo.github_url)
+        logger.exception("index_repo.failed")
         await _set_status(
             session, repo_id, IndexStatus.FAILED, detail=f"{type(exc).__name__}: {exc}"
         )
     finally:
         if checkout is not None:
             cleanup(checkout)
+        structlog.contextvars.clear_contextvars()
 
 
 async def get_repo_by_url(session: AsyncSession, github_url: str) -> Repo | None:
