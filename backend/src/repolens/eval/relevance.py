@@ -11,9 +11,17 @@ from typing import Protocol
 
 
 class Span(Protocol):
-    file_path: str
-    start_line: int
-    end_line: int
+    """Read-only on purpose: both `RetrievedChunk` (a frozen dataclass) and
+    `RelevantSpan` (a pydantic model) need to structurally satisfy this, and
+    a plain attribute annotation here would require a *settable* attribute —
+    which a frozen dataclass's fields aren't."""
+
+    @property
+    def file_path(self) -> str: ...
+    @property
+    def start_line(self) -> int: ...
+    @property
+    def end_line(self) -> int: ...
 
 
 def _overlaps(a: Span, b: Span) -> bool:
