@@ -106,6 +106,13 @@ services:
   frontend:
     build:
       context: ./frontend
+      # Next.js inlines NEXT_PUBLIC_* vars into the client bundle at BUILD
+      # time (next build), not runtime — `environment:` below only affects
+      # the running container, which is useless for a var the browser reads
+      # from a JS bundle baked before the container ever starts. Has to be
+      # a build arg.
+      args:
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
     env_file:
       - .env
     environment:

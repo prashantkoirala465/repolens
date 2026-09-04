@@ -1,6 +1,12 @@
 FROM node:22-slim AS base
 RUN corepack enable
 WORKDIR /app
+# Non-interactive: pnpm's dependency status check (introduced in newer pnpm
+# releases) can decide node_modules needs purging/reinstalling before a run
+# script, and refuses to do that without a TTY to confirm — which a Docker
+# RUN step never has. CI=true is pnpm's own documented way to tell it this
+# is an automated environment, not a case of "silently skip the check."
+ENV CI=true
 
 FROM base AS deps
 COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml ./
