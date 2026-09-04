@@ -59,6 +59,12 @@ class Settings(BaseSettings):
 
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
+    # slowapi/limits rate-limit strings, applied to the two routes with real
+    # compute/cost behind them (POST /repos clones + embeds, POST .../query
+    # generates) — GET routes stay unlimited.
+    rate_limit_repos: str = Field(default="5/minute", alias="RATE_LIMIT_REPOS")
+    rate_limit_query: str = Field(default="20/minute", alias="RATE_LIMIT_QUERY")
+
 
 @lru_cache
 def get_settings() -> Settings:

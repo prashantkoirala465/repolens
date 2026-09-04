@@ -1,9 +1,10 @@
 import uuid
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from repolens.api.deps import SessionDep
 from repolens.core.config import get_settings
+from repolens.core.rate_limit import QUERY_RATE_LIMIT, limiter
 from repolens.db.models import IndexStatus, Query, Repo
 from repolens.embeddings.factory import get_embedder
 from repolens.generation.answer import generate_answer
@@ -15,8 +16,9 @@ router = APIRouter(prefix="/repos/{repo_id}/query", tags=["query"])
 
 
 @router.post("", response_model=QueryResponse)
+@limiter.limit(QUERY_RATE_LIMIT)
 async def query_repo(
-    repo_id: uuid.UUID, request: QueryRequest, session: SessionDep
+    request: Request, repo_id: uuid.UUID, payload: QueryRequest, session: SessionDep
 ) -> QueryResponse:
     repo = await session.get(Repo, repo_id)
     if repo is None:
@@ -28,9 +30,9 @@ async def query_repo(
 
     settings = get_settings()
     embedder = get_embedder()
-    query_vector = embedder.embed_query(request.question)
+    query_vector = embedder.embed_query(payload.question)
     sparse_query_vector = (
-        embed_sparse_query(request.question) if settings.retrieval_mode == "hybrid" else None
+        embed_sparse_query(payload.question) if settings.retrieval_mode == "hybrid" else None
     )
     retrieved = search(
         str(repo_id),
@@ -43,12 +45,12 @@ async def query_repo(
     if not retrieved:
         raise HTTPException(status_code=404, detail="no indexed content found for this repo")
 
-    generated = generate_answer(request.question, retrieved)
+    generated = generate_answer(payload.question, retrieved)
 
     query_record = Query(
         id=uuid.uuid4(),
         repo_id=repo_id,
-        question=request.question,
+        question=payload.question,
         answer=generated.answer,
         retrieved_chunk_ids=[c.chunk_id for c in retrieved],
         cited_chunk_ids=generated.cited_chunk_ids,

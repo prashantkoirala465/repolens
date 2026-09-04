@@ -1,9 +1,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from repolens.api.routes import health, query, repos
 from repolens.core.config import get_settings
 from repolens.core.logging import configure_logging
+from repolens.core.rate_limit import limiter
 
 settings = get_settings()
 configure_logging(settings.log_level)
@@ -12,6 +16,13 @@ app = FastAPI(
     title="RepoLens",
     description="RAG search over any public GitHub repo, with a real eval harness.",
 )
+
+app.state.limiter = limiter
+# slowapi's handler is typed narrowly for RateLimitExceeded; Starlette's stub
+# wants a general Exception handler — a known slowapi/mypy mismatch, not a
+# real type error.
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
+app.add_middleware(SlowAPIMiddleware)
 
 # The frontend runs on a different origin (Next.js dev server / a separate
 # deployed host) than this API, so browser requests need CORS explicitly
