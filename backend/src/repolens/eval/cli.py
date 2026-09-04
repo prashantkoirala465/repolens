@@ -1,10 +1,12 @@
 """`repolens-eval` — run the retrieval benchmark, and compare two runs.
 
-repolens-eval run --benchmark <path> [--k 5,10] [--label NAME] --out result.json
+repolens-eval run --benchmark <path> [--k 5,10] [--mode dense|hybrid] \
+    [--label NAME] --out result.json
 repolens-eval diff <baseline.json> <candidate.json>
 """
 
 from pathlib import Path
+from typing import Literal
 
 import click
 
@@ -38,21 +40,30 @@ def cli() -> None:
 )
 @click.option("--k", "k_raw", default="5,10", show_default=True, help="comma-separated cutoffs")
 @click.option(
+    "--mode",
+    type=click.Choice(["dense", "hybrid"]),
+    default="dense",
+    show_default=True,
+    help="retrieval strategy to evaluate — independent of the app's RETRIEVAL_MODE",
+)
+@click.option(
     "--label",
     default="default",
     show_default=True,
     help="name for this run, e.g. 'dense-ollama-top10'",
 )
 @click.option("--out", "out_path", required=True, type=click.Path(dir_okay=False, path_type=Path))
-def run_cmd(benchmark_path: Path, k_raw: str, label: str, out_path: Path) -> None:
+def run_cmd(
+    benchmark_path: Path, k_raw: str, mode: Literal["dense", "hybrid"], label: str, out_path: Path
+) -> None:
     """Index the benchmark's pinned commit and score retrieval against it."""
     k_values = _parse_k_values(k_raw)
     benchmark = load_benchmark(benchmark_path)
     click.echo(
         f"Running {len(benchmark.questions)} questions against "
-        f"{benchmark.repo_url}@{benchmark.commit[:12]} (k={k_values})"
+        f"{benchmark.repo_url}@{benchmark.commit[:12]} (mode={mode}, k={k_values})"
     )
-    result = run_benchmark(benchmark, k_values, label)
+    result = run_benchmark(benchmark, k_values, label, mode)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     result.save(out_path)
     click.echo(f"Wrote {out_path}")
@@ -60,7 +71,10 @@ def run_cmd(benchmark_path: Path, k_raw: str, label: str, out_path: Path) -> Non
 
 
 def _print_aggregate(result: EvalResult) -> None:
-    click.echo(f"\n{result.label}  ({result.embedding_provider}/{result.embedding_model})")
+    click.echo(
+        f"\n{result.label}  ({result.retrieval_mode}, "
+        f"{result.embedding_provider}/{result.embedding_model})"
+    )
     click.echo(f"  MRR: {result.aggregate.mrr:.3f}")
     for k in result.k_values:
         click.echo(
@@ -81,10 +95,12 @@ def diff_cmd(baseline_path: Path, candidate_path: Path) -> None:
         raise click.ClickException("the two runs share no common k values to compare")
 
     click.echo(
-        f"baseline:  {baseline.label} ({baseline.embedding_provider}/{baseline.embedding_model})"
+        f"baseline:  {baseline.label} ({baseline.retrieval_mode}, "
+        f"{baseline.embedding_provider}/{baseline.embedding_model})"
     )
     click.echo(
-        f"candidate: {candidate.label} ({candidate.embedding_provider}/{candidate.embedding_model})"
+        f"candidate: {candidate.label} ({candidate.retrieval_mode}, "
+        f"{candidate.embedding_provider}/{candidate.embedding_model})"
     )
     click.echo()
     header = f"{'metric':<14}{'baseline':>10}{'candidate':>10}{'delta':>10}"
