@@ -59,4 +59,11 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# session-scoped, not the default function-scoped: db/session.py's async
+# engine is a process-wide singleton with its own connection pool, and a
+# pooled asyncpg connection created under one event loop breaks ("attached
+# to a different loop") if reused after that loop closes and a new
+# function-scoped loop starts for the next test.
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 testpaths = ["tests"]
