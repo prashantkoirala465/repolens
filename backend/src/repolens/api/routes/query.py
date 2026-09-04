@@ -8,6 +8,7 @@ from repolens.db.models import IndexStatus, Query, Repo
 from repolens.embeddings.factory import get_embedder
 from repolens.generation.answer import generate_answer
 from repolens.retrieval.qdrant_store import search
+from repolens.retrieval.sparse import embed_sparse_query
 from repolens.schemas.query import QueryRequest, QueryResponse, RetrievedChunkResponse
 
 router = APIRouter(prefix="/repos/{repo_id}/query", tags=["query"])
@@ -25,9 +26,19 @@ async def query_repo(
             status_code=409, detail=f"repo is not ready to query (status={repo.status.value})"
         )
 
+    settings = get_settings()
     embedder = get_embedder()
     query_vector = embedder.embed_query(request.question)
-    retrieved = search(str(repo_id), query_vector, top_k=get_settings().retrieval_top_k)
+    sparse_query_vector = (
+        embed_sparse_query(request.question) if settings.retrieval_mode == "hybrid" else None
+    )
+    retrieved = search(
+        str(repo_id),
+        query_vector,
+        top_k=settings.retrieval_top_k,
+        mode=settings.retrieval_mode,
+        sparse_query_vector=sparse_query_vector,
+    )
 
     if not retrieved:
         raise HTTPException(status_code=404, detail="no indexed content found for this repo")
