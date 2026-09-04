@@ -34,6 +34,7 @@ class EvalResult(BaseModel):
     benchmark_repo_url: str
     benchmark_commit: str
     k_values: list[int]
+    retrieval_mode: str
     embedding_provider: str
     embedding_model: str
     questions: list[QuestionResult]

@@ -2,17 +2,21 @@
 upsert -> query every benchmark question -> score against ground truth.
 
 Chunking, embedding, and storage are the exact same code paths production
-indexing uses (`chunking.walker`, `embeddings.factory`, `retrieval.qdrant_store`)
-so a run measures the real pipeline, not a stand-in. Indexing writes under a
-synthetic `eval:{owner}/{name}@{commit}` id via the store's existing
-per-repo scoping, so it can never collide with anything indexed through the
-app.
+indexing uses (`chunking.walker`, `embeddings.factory`, `retrieval.qdrant_store`,
+`retrieval.sparse`) so a run measures the real pipeline, not a stand-in.
+Indexing writes under a synthetic `eval:{owner}/{name}@{commit}` id via the
+store's existing per-repo scoping, so it can never collide with anything
+indexed through the app. `mode` is an explicit parameter here, independent
+of the app's configured RETRIEVAL_MODE — the whole point of eval is to
+compare two modes side by side without touching global config.
 
 Not unit tested: like services/indexer.py and services/git.shallow_clone,
 this is I/O all the way down (network clone, a live embedder, live Qdrant).
 It's a dev tool, run by hand — see the README's "Measuring retrieval
 quality" section.
 """
+
+from typing import Literal
 
 from repolens.chunking.walker import chunk_file, iter_indexable_files
 from repolens.core.config import get_settings
@@ -29,6 +33,7 @@ from repolens.retrieval.qdrant_store import (
     search,
     upsert_chunks,
 )
+from repolens.retrieval.sparse import embed_sparse_documents, embed_sparse_query
 from repolens.services.git import ParsedRepo, cleanup, parse_github_url
 
 logger = get_logger(__name__)
@@ -51,7 +56,12 @@ def _aggregate(results: list[QuestionResult], k_values: list[int]) -> AggregateM
     )
 
 
-def run_benchmark(benchmark: Benchmark, k_values: list[int], label: str) -> EvalResult:
+def run_benchmark(
+    benchmark: Benchmark,
+    k_values: list[int],
+    label: str,
+    mode: Literal["dense", "hybrid"] = "dense",
+) -> EvalResult:
     if not k_values:
         raise ValueError("k_values must be non-empty")
 
@@ -73,14 +83,25 @@ def run_benchmark(benchmark: Benchmark, k_values: list[int], label: str) -> Eval
         ensure_collection(embedder.dimension)
         repo_id = _eval_repo_id(parsed, benchmark.commit)
         delete_repo_chunks(repo_id)  # re-running a benchmark: drop the prior version's chunks first
-        vectors = embedder.embed_documents([c.text for c in chunks])
-        upsert_chunks(repo_id, chunks, vectors)
+        chunk_texts = [c.text for c in chunks]
+        dense_vectors = embedder.embed_documents(chunk_texts)
+        sparse_vectors = embed_sparse_documents(chunk_texts)
+        upsert_chunks(repo_id, chunks, dense_vectors, sparse_vectors)
 
         max_k = max(k_values)
         results: list[QuestionResult] = []
         for question in benchmark.questions:
-            query_vector = embedder.embed_query(question.question)
-            retrieved = search(repo_id, query_vector, top_k=max_k)
+            dense_query_vector = embedder.embed_query(question.question)
+            sparse_query_vector = (
+                embed_sparse_query(question.question) if mode == "hybrid" else None
+            )
+            retrieved = search(
+                repo_id,
+                dense_query_vector,
+                top_k=max_k,
+                mode=mode,
+                sparse_query_vector=sparse_query_vector,
+            )
             matches = judge_relevance(retrieved, question.relevant_spans)
             num_relevant = len(question.relevant_spans)
             metrics = QuestionMetrics(
@@ -106,12 +127,13 @@ def run_benchmark(benchmark: Benchmark, k_values: list[int], label: str) -> Eval
         if settings.embedding_provider == "voyage"
         else settings.ollama_embedding_model
     )
-    logger.info("eval.run_complete", label=label, question_count=len(results))
+    logger.info("eval.run_complete", label=label, mode=mode, question_count=len(results))
     return EvalResult(
         label=label,
         benchmark_repo_url=benchmark.repo_url,
         benchmark_commit=benchmark.commit,
         k_values=k_values,
+        retrieval_mode=mode,
         embedding_provider=settings.embedding_provider,
         embedding_model=embedding_model,
         questions=results,

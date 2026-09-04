@@ -8,6 +8,7 @@ from repolens.core.logging import get_logger
 from repolens.db.models import IndexStatus, Repo
 from repolens.embeddings.factory import get_embedder
 from repolens.retrieval.qdrant_store import delete_repo_chunks, ensure_collection, upsert_chunks
+from repolens.retrieval.sparse import embed_sparse_documents
 from repolens.services.git import (
     CloneTimeoutError,
     RepoTooLargeError,
@@ -71,8 +72,10 @@ async def index_repo(session: AsyncSession, repo_id: uuid.UUID) -> None:
         embedder = get_embedder()
         ensure_collection(embedder.dimension)
         delete_repo_chunks(str(repo_id))  # re-indexing: drop the prior version's chunks first
-        vectors = embedder.embed_documents([c.text for c in chunks])
-        upsert_chunks(str(repo_id), chunks, vectors)
+        chunk_texts = [c.text for c in chunks]
+        dense_vectors = embedder.embed_documents(chunk_texts)
+        sparse_vectors = embed_sparse_documents(chunk_texts)
+        upsert_chunks(str(repo_id), chunks, dense_vectors, sparse_vectors)
 
         repo.chunk_count = len(chunks)
         await _set_status(session, repo_id, IndexStatus.READY)
